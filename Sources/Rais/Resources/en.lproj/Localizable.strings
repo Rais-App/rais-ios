@@ -1,0 +1,7 @@
+"close" = "Close";
+"load_failed_title" = "Can't load the payment page";
+"load_failed_body" = "Check your connection and try again.";
+"retry" = "Try again";
+"declined" = "The payment was declined.";
+"expired" = "The payment expired.";
+"invalid_url" = "This is not a valid Raïs checkout address.";

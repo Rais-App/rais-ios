@@ -1,0 +1,7 @@
+"close" = "Fermer";
+"load_failed_title" = "Impossible de charger la page de paiement";
+"load_failed_body" = "Vérifiez votre connexion et réessayez.";
+"retry" = "Réessayer";
+"declined" = "Le paiement a été refusé.";
+"expired" = "Le paiement a expiré.";
+"invalid_url" = "Ce n’est pas une adresse de paiement Raïs valide.";
