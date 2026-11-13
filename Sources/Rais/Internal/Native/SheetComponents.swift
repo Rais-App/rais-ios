@@ -366,123 +366,152 @@ final class InputGroup: ThemedView {
     }
 }
 
-// MARK: - A checkbox with its sentence
+// MARK: - A switch with its sentence
 
-/// A checkbox and what it means. Part of the sentence may be a link (the terms): the link opens, the rest ticks.
-final class CheckRow: ThemedView {
-    private let box = UIView()
-    private let tick = UIImageView()
+/// Something the payer may turn on or off ("Save this card"), as a row of its own: the sentence, and the system's switch.
+final class ToggleRow: ThemedView {
+    private let toggle = UISwitch()
     private let label = UILabel()
-    private var linkRange: NSRange?
 
     var isOn: Bool {
-        didSet { apply(); onChange?() }
+        get { toggle.isOn }
+        set { toggle.setOn(newValue, animated: false) }
     }
 
-    var onChange: (() -> Void)?
-    var onLink: (() -> Void)?
-
-    var hasError = false { didSet { refresh() } }
-
-    init(theme: SheetTheme, text: String, link: String? = nil, isOn: Bool) {
-        self.isOn = isOn
+    init(theme: SheetTheme, text: String, isOn: Bool) {
         super.init(theme: theme)
+        backgroundColor = theme.surface
+        layer.cornerRadius = theme.radius
+        layer.cornerCurve = .continuous
         isAccessibilityElement = true
-        accessibilityTraits = .button
-        accessibilityLabel = link.map { "\(text) \($0)" } ?? text
+        accessibilityLabel = text
+        accessibilityTraits = toggle.accessibilityTraits
 
-        box.translatesAutoresizingMaskIntoConstraints = false
-        box.layer.cornerRadius = 7
-        box.layer.cornerCurve = .continuous
-        box.layer.borderWidth = 1.5
-        tick.image = Glyph.image("checkmark", size: 12, weight: .bold)
-        tick.contentMode = .center
-        tick.translatesAutoresizingMaskIntoConstraints = false
-        box.addSubview(tick)
-
-        let body = NSMutableAttributedString(string: text, attributes: [.foregroundColor: theme.secondary])
-        if let link {
-            body.append(NSAttributedString(string: " "))
-            linkRange = NSRange(location: body.length, length: (link as NSString).length)
-            body.append(NSAttributedString(string: link, attributes: [
-                .foregroundColor: theme.text, .underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: theme.tertiary,
-            ]))
-        }
-        body.addAttribute(.font, value: theme.font(14, .regular, style: .subheadline), range: NSRange(location: 0, length: body.length))
-        label.attributedText = body
-        label.numberOfLines = 0
+        label.text = text
+        label.font = theme.font(15, .regular, style: .subheadline)
         label.adjustsFontForContentSizeCategory = true
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(box)
-        addSubview(label)
-        NSLayoutConstraint.activate([
-            box.widthAnchor.constraint(equalToConstant: 24),
-            box.heightAnchor.constraint(equalToConstant: 24),
-            box.leadingAnchor.constraint(equalTo: leadingAnchor),
-            box.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            tick.centerXAnchor.constraint(equalTo: box.centerXAnchor),
-            tick.centerYAnchor.constraint(equalTo: box.centerYAnchor),
-            label.leadingAnchor.constraint(equalTo: box.trailingAnchor, constant: 12),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor),
-            label.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 32),
-        ])
-        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
-        apply()
-    }
-
-    @objc private func tapped(_ gesture: UITapGestureRecognizer) {
-        if let linkRange, let index = characterIndex(at: gesture.location(in: label)), NSLocationInRange(index, linkRange) {
-            onLink?()
-        } else {
-            isOn.toggle()
+        label.textColor = theme.text
+        label.numberOfLines = 0
+        toggle.isOn = isOn
+        toggle.onTintColor = theme.primary
+        toggle.setContentHuggingPriority(.required, for: .horizontal)
+        toggle.setContentCompressionResistancePriority(.required, for: .horizontal)
+        toggle.addAction(UIAction { [weak self] _ in
             UISelectionFeedbackGenerator().selectionChanged()
-        }
+            self?.accessibilityValue = self?.toggle.accessibilityValue
+        }, for: .valueChanged)
+        accessibilityValue = toggle.accessibilityValue
+        let row = UIStackView(arrangedSubviews: [label, toggle])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = 12
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
+        ])
     }
 
     override func accessibilityActivate() -> Bool {
-        isOn.toggle()
+        toggle.setOn(!toggle.isOn, animated: true)
+        toggle.sendActions(for: .valueChanged)
         return true
     }
+}
 
-    /// Which character of the label a touch landed on, laid out the way the label lays it out.
-    private func characterIndex(at point: CGPoint) -> Int? {
-        guard let text = label.attributedText, label.bounds.contains(point) else { return nil }
-        let storage = NSTextStorage(attributedString: text)
-        let layout = NSLayoutManager()
-        let container = NSTextContainer(size: CGSize(width: label.bounds.width, height: .greatestFiniteMagnitude))
-        container.lineFragmentPadding = 0
-        container.maximumNumberOfLines = label.numberOfLines
-        container.lineBreakMode = label.lineBreakMode
-        layout.addTextContainer(container)
-        storage.addLayoutManager(layout)
-        let glyph = layout.glyphIndex(for: point, in: container)
-        guard layout.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container).insetBy(dx: -8, dy: -8).contains(point) else { return nil }
-        return layout.characterIndexForGlyph(at: glyph)
+// MARK: - Glass
+
+/// A pane of the system's glass that floats over the page: the bar that holds the button, the disc of the close button. Liquid Glass where the
+/// system has it (iOS 26), the system's thin blur with a hairline rim before that. What it holds goes in `content`.
+final class GlassPane: ThemedView {
+    private let glass: UIVisualEffectView
+    private let radius: CGFloat?
+    private let isLiquid: Bool
+    var content: UIView { glass.contentView }
+
+    /// - Parameters:
+    ///   - radius: the corner radius, or `nil` for a disc or a capsule (half the height).
+    ///   - floats: lifted off the page by a soft shadow (the bar; the small disc needs none).
+    init(theme: SheetTheme, radius: CGFloat?, floats: Bool = false) {
+        self.radius = radius
+        var liquid = false
+        var effect: UIVisualEffect = UIBlurEffect(style: .systemThinMaterial)
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            effect = UIGlassEffect()
+            liquid = true
+        }
+        #endif
+        isLiquid = liquid
+        glass = UIVisualEffectView(effect: effect)
+        super.init(theme: theme)
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        glass.clipsToBounds = true
+        glass.layer.cornerCurve = .continuous
+        if let radius { glass.layer.cornerRadius = radius }
+        addSubview(glass)
+        NSLayoutConstraint.activate([
+            glass.topAnchor.constraint(equalTo: topAnchor), glass.bottomAnchor.constraint(equalTo: bottomAnchor),
+            glass.leadingAnchor.constraint(equalTo: leadingAnchor), glass.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+        if floats, !liquid {
+            layer.shadowOpacity = 0.14
+            layer.shadowRadius = 22
+            layer.shadowOffset = CGSize(width: 0, height: 8)
+        }
     }
 
-    private func apply() {
-        tick.isHidden = !isOn
-        accessibilityValue = isOn ? "1" : "0"
-        if isOn { accessibilityTraits.insert(.selected) } else { accessibilityTraits.remove(.selected) }
-        if isOn { hasError = false } else { refresh() }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let corner = radius ?? bounds.height / 2
+        glass.layer.cornerRadius = corner
+        if layer.shadowOpacity > 0 { layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: corner).cgPath }
     }
 
     override func refresh() {
-        box.backgroundColor = isOn ? theme.primary : .clear
-        tick.tintColor = theme.onPrimary
-        box.layer.borderColor = cg(isOn ? theme.primary : (hasError ? theme.danger : theme.tertiary))
+        guard !isLiquid else { return }   // the system's glass draws its own rim
+        glass.layer.borderWidth = 1 / max(1, traitCollection.displayScale)
+        glass.layer.borderColor = cg(theme.border)
+        layer.shadowColor = UIColor.black.cgColor
+    }
+}
+
+/// The page's color fading out downwards: what scrolls under the status bar dissolves into it instead of being cut by an edge.
+final class FadeView: ThemedView {
+    private let gradient = CAGradientLayer()
+
+    override init(theme: SheetTheme) {
+        super.init(theme: theme)
+        isUserInteractionEnabled = false
+        gradient.locations = [0, 0.55, 1]
+        layer.addSublayer(gradient)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        gradient.frame = bounds
+        CATransaction.commit()
+    }
+
+    override func refresh() {
+        let color = theme.background.resolvedColor(with: traitCollection)
+        gradient.colors = [color.withAlphaComponent(0.97).cgColor, color.withAlphaComponent(0.85).cgColor, color.withAlphaComponent(0).cgColor]
     }
 }
 
 // MARK: - Choices
 
-/// One way to pay among several: a balance, a saved card, another card.
+/// One way to pay among several: a balance, a saved card, another card. Its mark leads (the network of a card, the Raïs mark), and the one
+/// that is chosen carries a check.
 final class ChoiceRow: UIControl {
     private let theme: SheetTheme
-    private let radio = UIView()
-    private let dot = UIView()
+    private let check = UIImageView()
     private let title = UILabel()
     private let detail = UILabel()
 
@@ -490,20 +519,24 @@ final class ChoiceRow: UIControl {
     override var isEnabled: Bool { didSet { apply() } }
     override var isHighlighted: Bool { didSet { backgroundColor = isHighlighted ? theme.line : .clear } }
 
-    init(theme: SheetTheme, title text: String, detail sub: String?, latinTitle: Bool = false, trailing: UIView? = nil) {
+    init(theme: SheetTheme, title text: String, detail sub: String?, latinTitle: Bool = false, mark: UIView? = nil) {
         self.theme = theme
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         isAccessibilityElement = true
         accessibilityLabel = [text, sub].compactMap { $0 }.joined(separator: ", ")
 
-        radio.layer.cornerRadius = 11
-        radio.layer.borderWidth = 1.5
-        radio.isUserInteractionEnabled = false
-        radio.translatesAutoresizingMaskIntoConstraints = false
-        dot.layer.cornerRadius = 4
-        dot.translatesAutoresizingMaskIntoConstraints = false
-        radio.addSubview(dot)
+        // every mark sits in a slot of the same width, so the titles of the rows line up whatever leads them
+        let slot = UIView()
+        slot.translatesAutoresizingMaskIntoConstraints = false
+        slot.isUserInteractionEnabled = false
+        if let mark {
+            mark.translatesAutoresizingMaskIntoConstraints = false
+            slot.addSubview(mark)
+            NSLayoutConstraint.activate([
+                mark.centerXAnchor.constraint(equalTo: slot.centerXAnchor), mark.centerYAnchor.constraint(equalTo: slot.centerYAnchor),
+            ])
+        }
 
         title.text = text
         title.font = theme.font(16, .medium, style: .callout, digits: true)
@@ -520,30 +553,25 @@ final class ChoiceRow: UIControl {
         let column = UIStackView(arrangedSubviews: [title, detail])
         column.axis = .vertical
         column.spacing = 2
-        let row = UIStackView(arrangedSubviews: [radio, column])
+        check.contentMode = .center
+        check.setContentHuggingPriority(.required, for: .horizontal)
+        check.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let row = UIStackView(arrangedSubviews: [slot, column, check])
         row.axis = .horizontal
         row.alignment = .center
         row.spacing = 12
         row.isUserInteractionEnabled = false
         row.translatesAutoresizingMaskIntoConstraints = false
-        if let trailing {
-            trailing.setContentHuggingPriority(.required, for: .horizontal)
-            trailing.setContentCompressionResistancePriority(.required, for: .horizontal)
-            row.addArrangedSubview(trailing)
-        }
         addSubview(row)
         NSLayoutConstraint.activate([
-            radio.widthAnchor.constraint(equalToConstant: 22),
-            radio.heightAnchor.constraint(equalToConstant: 22),
-            dot.widthAnchor.constraint(equalToConstant: 8),
-            dot.heightAnchor.constraint(equalToConstant: 8),
-            dot.centerXAnchor.constraint(equalTo: radio.centerXAnchor),
-            dot.centerYAnchor.constraint(equalTo: radio.centerYAnchor),
+            slot.widthAnchor.constraint(equalToConstant: 34),
+            slot.heightAnchor.constraint(equalToConstant: 34),
+            check.widthAnchor.constraint(equalToConstant: 24),
             row.topAnchor.constraint(equalTo: topAnchor, constant: 12),
             row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
             row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 60),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 62),
         ])
         apply()
     }
@@ -556,18 +584,11 @@ final class ChoiceRow: UIControl {
     }
 
     private func apply() {
-        let traits = traitCollection
-        radio.layer.borderColor = (isSelected ? theme.primary : theme.tertiary).resolvedColor(with: traits).cgColor
-        radio.backgroundColor = isSelected ? theme.primary : .clear
-        dot.backgroundColor = isSelected ? theme.onPrimary : .clear
+        check.image = Glyph.image(isSelected ? "checkmark.circle.fill" : "circle", size: 21, weight: isSelected ? .semibold : .light)
+        check.tintColor = isSelected ? theme.primary : theme.tertiary
         alpha = isEnabled ? 1 : 0.45
         accessibilityTraits = isSelected ? [.button, .selected] : .button
         if !isEnabled { accessibilityTraits.insert(.notEnabled) }
-    }
-
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
-        apply()
     }
 }
 
@@ -657,7 +678,7 @@ final class AvatarView: ThemedView {
     private let initial = UILabel()
     private let picture = UIImageView()
 
-    init(theme: SheetTheme, name: String, size: CGFloat = 56) {
+    init(theme: SheetTheme, name: String, size: CGFloat = 64) {
         super.init(theme: theme)
         backgroundColor = theme.surface
         layer.cornerRadius = size * 0.28
@@ -683,10 +704,11 @@ final class AvatarView: ThemedView {
         NSLayoutConstraint.activate([widthAnchor.constraint(equalToConstant: size), heightAnchor.constraint(equalToConstant: size)])
     }
 
-    func show(_ image: UIImage) {
+    func show(_ image: UIImage, animated: Bool = true) {
         picture.image = image
-        picture.alpha = 0
         picture.isHidden = false
+        guard animated else { return }
+        picture.alpha = 0
         UIView.animate(withDuration: 0.2) { self.picture.alpha = 1 }
     }
 

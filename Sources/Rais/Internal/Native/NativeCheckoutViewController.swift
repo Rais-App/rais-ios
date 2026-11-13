@@ -15,13 +15,14 @@ final class NativeCheckoutViewController: UIViewController {
 
     // chrome
     private let closeButton = UIButton(type: .custom)
-    private let closeDisc = UIView()
+    private let closeDisc: GlassPane
     private let closeGlyph = UIImageView()
     private let chipSlot = UIStackView()
     private let scroll = UIScrollView()
     private let stage = UIStackView()
-    private let bar = UIView()
-    private let barLine = UIView()
+    private let topFade: FadeView
+    private let bar: GlassPane
+    private var barBottom: NSLayoutConstraint?
     private let barStack = UIStackView()
     private let notice: NoticeView
     private let primary: SheetButton
@@ -66,6 +67,9 @@ final class NativeCheckoutViewController: UIViewController {
         notice = NoticeView(theme: theme, tone: .danger)
         primary = SheetButton(theme: theme, kind: .primary, title: "")
         secondary = SheetButton(theme: theme, kind: .plain, title: "")
+        closeDisc = GlassPane(theme: theme, radius: nil)
+        bar = GlassPane(theme: theme, radius: 30, floats: true)
+        topFade = FadeView(theme: theme)
         super.init(nibName: nil, bundle: nil)
         switch configuration.appearance.colorScheme {
         case .light: overrideUserInterfaceStyle = .light
@@ -103,11 +107,13 @@ final class NativeCheckoutViewController: UIViewController {
     }
 
     private func buildStage() {
+        // The page scrolls under everything: nothing above it but the close button, nothing below it but the pane of glass that holds the button.
         scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.alwaysBounceVertical = true
         scroll.keyboardDismissMode = .interactive
         scroll.showsVerticalScrollIndicator = false
         scroll.delaysContentTouches = false
+        scroll.contentInsetAdjustmentBehavior = .never   // the insets are this screen's own: see `viewDidLayoutSubviews`
         view.addSubview(scroll)
         stage.axis = .vertical
         stage.translatesAutoresizingMaskIntoConstraints = false
@@ -116,37 +122,40 @@ final class NativeCheckoutViewController: UIViewController {
         tap.cancelsTouchesInView = false
         scroll.addGestureRecognizer(tap)
 
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        bar.backgroundColor = theme.background
+        topFade.alpha = 0
+        view.addSubview(topFade)
         view.addSubview(bar)
 
         // Readable on an iPad or in landscape too: the content never grows wider than a phone's.
         let width = stage.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor, constant: -40)
         width.priority = UILayoutPriority(999)
+        let barWidth = bar.widthAnchor.constraint(equalTo: view.widthAnchor, constant: -20)
+        barWidth.priority = UILayoutPriority(999)
+        // above the keyboard, or just over the home indicator when there is none: nothing is ever under the keyboard
+        let barBottom = bar.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8)
+        self.barBottom = barBottom
         NSLayoutConstraint.activate([
-            // under the close button's row: what scrolls never passes behind it
-            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 54),
+            scroll.topAnchor.constraint(equalTo: view.topAnchor),
             scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: bar.topAnchor),
-            stage.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 6),
-            stage.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -24),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            stage.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            stage.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -20),
             stage.centerXAnchor.constraint(equalTo: scroll.frameLayoutGuide.centerXAnchor),
             stage.widthAnchor.constraint(lessThanOrEqualToConstant: 480),
             width,
-            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            // above the keyboard, or above the home indicator when there is none: nothing is ever under the keyboard
-            bar.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+            topFade.topAnchor.constraint(equalTo: view.topAnchor),
+            topFade.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            topFade.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            topFade.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 30),
+            bar.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            bar.widthAnchor.constraint(lessThanOrEqualToConstant: 500),
+            barWidth,
+            barBottom,
         ])
     }
 
     private func buildBar() {
-        barLine.backgroundColor = theme.line
-        barLine.translatesAutoresizingMaskIntoConstraints = false
-        barLine.alpha = 0
-        bar.addSubview(barLine)
-
         primary.accessibilityIdentifier = "rais.primary"
         primary.onTap { [weak self] in self?.primaryTapped() }
         secondary.accessibilityIdentifier = "rais.secondary"
@@ -169,26 +178,31 @@ final class NativeCheckoutViewController: UIViewController {
         assurance.addArrangedSubview(line)
 
         barStack.axis = .vertical
-        barStack.spacing = 10
+        barStack.spacing = 8
         barStack.translatesAutoresizingMaskIntoConstraints = false
         for view in [notice, primary, secondary, assurance] as [UIView] { barStack.addArrangedSubview(view) }
-        barStack.setCustomSpacing(4, after: primary)
-        bar.addSubview(barStack)
-        let width = barStack.widthAnchor.constraint(equalTo: bar.widthAnchor, constant: -40)
-        width.priority = UILayoutPriority(999)
+        barStack.setCustomSpacing(2, after: primary)
+        bar.content.addSubview(barStack)
         NSLayoutConstraint.activate([
-            barLine.topAnchor.constraint(equalTo: bar.topAnchor),
-            barLine.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
-            barLine.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
-            barLine.heightAnchor.constraint(equalToConstant: 1),
-            barStack.topAnchor.constraint(equalTo: bar.topAnchor, constant: 12),
-            barStack.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -10),
-            barStack.centerXAnchor.constraint(equalTo: bar.centerXAnchor),
-            barStack.widthAnchor.constraint(lessThanOrEqualToConstant: 480),
-            width,
+            barStack.topAnchor.constraint(equalTo: bar.content.topAnchor, constant: 10),
+            barStack.bottomAnchor.constraint(equalTo: bar.content.bottomAnchor, constant: -10),
+            barStack.leadingAnchor.constraint(equalTo: bar.content.leadingAnchor, constant: 10),
+            barStack.trailingAnchor.constraint(equalTo: bar.content.trailingAnchor, constant: -10),
         ])
         scroll.delegate = self
         bar.isHidden = true
+    }
+
+    /// The page's own margins: it starts beside the close button, under the status bar, and its last line clears the pane of the button.
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        barBottom?.constant = keyboardUp ? -8 : (view.safeAreaInsets.bottom > 0 ? 12 : -10)
+        let top = view.safeAreaInsets.top + 10
+        let bottom = bar.isHidden ? view.safeAreaInsets.bottom : max(0, view.bounds.maxY - bar.frame.minY)
+        guard abs(scroll.contentInset.top - top) > 0.5 || abs(scroll.contentInset.bottom - bottom) > 0.5 else { return }
+        let restsAtTop = scroll.contentOffset.y <= -scroll.contentInset.top + 0.5
+        scroll.contentInset = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
+        if restsAtTop { scroll.contentOffset.y = -top }
     }
 
     private func buildChrome() {
@@ -197,11 +211,8 @@ final class NativeCheckoutViewController: UIViewController {
         closeButton.accessibilityLabel = Strings.close()
         closeButton.accessibilityIdentifier = "rais.close"
         closeDisc.isUserInteractionEnabled = false
-        closeDisc.translatesAutoresizingMaskIntoConstraints = false
-        closeDisc.layer.cornerRadius = 16
-        closeDisc.backgroundColor = theme.surface
-        closeGlyph.image = Glyph.image("xmark", size: 12, weight: .bold)
-        closeGlyph.tintColor = theme.secondary
+        closeGlyph.image = Glyph.image("xmark", size: 13, weight: .bold)
+        closeGlyph.tintColor = theme.text
         closeGlyph.translatesAutoresizingMaskIntoConstraints = false
         closeButton.addSubview(closeDisc)
         closeButton.addSubview(closeGlyph)
@@ -249,8 +260,8 @@ final class NativeCheckoutViewController: UIViewController {
             closeButton.heightAnchor.constraint(equalToConstant: 44),
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
             closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 10),
-            closeDisc.widthAnchor.constraint(equalToConstant: 32),
-            closeDisc.heightAnchor.constraint(equalToConstant: 32),
+            closeDisc.widthAnchor.constraint(equalToConstant: 36),
+            closeDisc.heightAnchor.constraint(equalToConstant: 36),
             closeDisc.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
             closeDisc.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
             closeGlyph.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
@@ -337,6 +348,7 @@ final class NativeCheckoutViewController: UIViewController {
             page.onCardEditing = { [weak self] in self?.prepareSession() }
             page.onFocus = { [weak self] view in self?.reveal(view) }
             page.onResize = { [weak self] in self?.view.layoutIfNeeded() }
+            if let logo = configuration.merchantLogo { page.show(logo: logo, animated: false) }
             page.onSignOut = { [weak self] in self?.signOut() }
             page.onOpen = { url in UIApplication.shared.open(url) }
             page.onOpenApp = { [weak self] url in
@@ -350,7 +362,7 @@ final class NativeCheckoutViewController: UIViewController {
             secondaryWanted = false
             assuranceLabel.text = context.words["pay.encrypted"]
             show(.pay, page: page)
-            if let logo = sheet.merchant?.logoURL {
+            if configuration.merchantLogo == nil, let logo = sheet.merchant?.logoURL {
                 Task { [weak page] in if let image = await api.image(logo) { page?.show(logo: image) } }
             }
         case .result:
@@ -434,8 +446,9 @@ final class NativeCheckoutViewController: UIViewController {
         stage.addArrangedSubview(page)
         applyDirection()
         updateBar()
-        scroll.setContentOffset(.zero, animated: false)
+        view.setNeedsLayout()
         view.layoutIfNeeded()
+        scroll.setContentOffset(CGPoint(x: 0, y: -scroll.contentInset.top), animated: false)
         scrollViewDidScroll(scroll)
         // the new page settles in: a short rise, so a change of step reads as one
         for part in [page, bar] as [UIView] {
@@ -503,6 +516,7 @@ final class NativeCheckoutViewController: UIViewController {
         keyboardUp = note.name == UIResponder.keyboardWillShowNotification
         UIView.animate(withDuration: 0.25) {
             self.updateBar()
+            self.view.setNeedsLayout()
             self.view.layoutIfNeeded()
         }
     }
@@ -521,12 +535,13 @@ final class NativeCheckoutViewController: UIViewController {
             guard let self, target.window != nil else { return }
             self.view.layoutIfNeeded()
             let frame = target.convert(target.bounds, to: self.scroll).insetBy(dx: 0, dy: -16)
-            let visible = self.scroll.bounds
+            let insets = self.scroll.contentInset
+            let room = self.scroll.bounds.height - insets.top - insets.bottom
             var offset = self.scroll.contentOffset.y
-            if frame.maxY > visible.maxY { offset += frame.maxY - visible.maxY }
-            if frame.minY < offset { offset = frame.minY }
-            let limit = max(0, self.scroll.contentSize.height - visible.height)
-            offset = min(max(0, offset), limit)
+            if frame.maxY > offset + insets.top + room { offset = frame.maxY - insets.top - room }
+            if frame.minY < offset + insets.top { offset = frame.minY - insets.top }
+            let limit = max(-insets.top, self.scroll.contentSize.height - self.scroll.bounds.height + insets.bottom)
+            offset = min(max(-insets.top, offset), limit)
             guard abs(offset - self.scroll.contentOffset.y) > 0.5 else { return }
             UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction]) {
                 self.scroll.contentOffset.y = offset
@@ -864,11 +879,10 @@ final class NativeCheckoutViewController: UIViewController {
 }
 
 extension NativeCheckoutViewController: UIScrollViewDelegate {
-    /// A hairline over the bar while content is under it.
+    /// What scrolls under the status bar fades into the page there, so the clock stays readable; at rest there is nothing over the page.
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        let hidden = scrollView.contentOffset.y + scrollView.bounds.height >= scrollView.contentSize.height - 1
-        let alpha: CGFloat = hidden ? 0 : 1
-        if barLine.alpha != alpha { UIView.animate(withDuration: 0.15) { self.barLine.alpha = alpha } }
+        let passed = scrollView.contentOffset.y + scrollView.contentInset.top
+        topFade.alpha = min(1, max(0, passed / 24))
     }
 }
 

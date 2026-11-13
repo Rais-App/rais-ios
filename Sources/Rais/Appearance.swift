@@ -64,6 +64,9 @@ extension RaisCheckout {
         /// The corner radius of buttons and input fields, in points (0 to 24). Cards and dialogs follow it proportionally.
         public var cornerRadius: CGFloat?
         public var fontFamily: FontFamily = .default
+        /// The app's own typeface for the native checkout: return the font for a point size and a weight (the SDK scales it with the device's
+        /// text size), or `nil` to keep `fontFamily`. Called on the main thread.
+        public var fontProvider: ((_ size: CGFloat, _ weight: UIFont.Weight) -> UIFont?)?
 
         public init() {}
     }

@@ -1,7 +1,7 @@
 import UIKit
 
 /// The payment to pay: who is paid and how much, then the ways to pay it (the payer's Raïs balance and cards when the checkout knows who they
-/// are, the cards a store keeps for its customer, a card typed now) and the two things the payer agrees to. One button, owned by the screen,
+/// are, the cards a store keeps for its customer, a card typed now) and whether a typed card is kept. One button, owned by the screen,
 /// pays with whatever is chosen here.
 final class PayView: UIView {
     enum Choice: Equatable {
@@ -38,9 +38,7 @@ final class PayView: UIView {
     private let nameGroup: InputGroup
     private var emailCell: InputCell?
     private var emailGroup: InputGroup?
-    private var saveRow: CheckRow?
-    private let termsRow: CheckRow
-    private let termsError = UILabel()
+    private var saveRow: ToggleRow?
 
     private(set) var choice: Choice = .newCard
 
@@ -56,7 +54,7 @@ final class PayView: UIView {
     /// The layout changed height (details opened, another way to pay chosen).
     var onResize: (() -> Void)?
 
-    func show(logo: UIImage) { avatar.show(logo) }
+    func show(logo: UIImage, animated: Bool = true) { avatar.show(logo, animated: animated) }
 
     init(context: SheetContext, sheet: Sheet, payment: Sheet.Payment, pay: Sheet.Pay, canOpenApp: Bool) {
         self.context = context
@@ -74,7 +72,6 @@ final class PayView: UIView {
         nameGroup = InputGroup(theme: theme, rows: [[nameCell]])
         savedCVCCell = InputCell(theme: theme, caption: words["saved.cvc"], placeholder: "•••")
         savedCVCGroup = InputGroup(theme: theme, rows: [[savedCVCCell]])
-        termsRow = CheckRow(theme: theme, text: words["pay.terms_prefix"], link: words["pay.terms_link"], isOn: true)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
@@ -262,17 +259,15 @@ final class PayView: UIView {
                 icon.widthAnchor.constraint(equalToConstant: 26).isActive = true
                 icon.heightAnchor.constraint(equalToConstant: 26).isActive = true
                 let enough = balance?.enough ?? false
-                row = ChoiceRow(theme: theme, title: words["sheet.balance"], detail: enough ? balance?.text : (balance?.shortText ?? balance?.text), trailing: icon)
+                row = ChoiceRow(theme: theme, title: words["sheet.balance"], detail: enough ? balance?.text : (balance?.shortText ?? balance?.text), mark: icon)
                 row.isEnabled = enough
                 row.accessibilityIdentifier = "rais.choice.balance"
             case .card(let card):
                 row = ChoiceRow(theme: theme, title: "•••• \(card.last4)", detail: "\(words["pay.expiry"]) \(card.expiry)", latinTitle: true,
-                                trailing: BrandMarks.single(card.brand))
+                                mark: BrandMarks.single(card.brand, size: 30) ?? Self.cardGlyph(theme))
                 row.accessibilityIdentifier = "rais.choice.card"
             case .newCard:
-                let icon = UIImageView(image: Glyph.image("creditcard", size: 17, weight: .regular))
-                icon.tintColor = theme.secondary
-                row = ChoiceRow(theme: theme, title: words[pay.payer != nil ? "wallet.other_card" : "saved.other"], detail: nil, trailing: icon)
+                row = ChoiceRow(theme: theme, title: words[pay.payer != nil ? "wallet.other_card" : "saved.other"], detail: nil, mark: Self.cardGlyph(theme, symbol: "plus"))
                 row.accessibilityIdentifier = "rais.choice.new"
             }
             row.addAction(UIAction { [weak self] _ in
@@ -301,6 +296,18 @@ final class PayView: UIView {
         savedCVCGroup.onFocus = { [weak self] _ in self.map { $0.onFocus?($0.savedCVCGroup) } }
         savedCVCGroup.isHidden = true
         column.addArrangedSubview(savedCVCGroup)
+    }
+
+    private static func cardGlyph(_ theme: SheetTheme, symbol: String = "creditcard") -> UIView {
+        let icon = UIImageView(image: Glyph.image(symbol, size: 15, weight: .medium))
+        icon.tintColor = theme.secondary
+        icon.contentMode = .center
+        icon.backgroundColor = theme.background
+        icon.layer.cornerRadius = 7
+        icon.layer.cornerCurve = .continuous
+        icon.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        return icon
     }
 
     private func heading(_ text: String) -> UILabel {
@@ -410,7 +417,7 @@ final class PayView: UIView {
         column.addArrangedSubview(newCardSection)
     }
 
-    // MARK: The receipt address, and what the payer agrees to
+    // MARK: The receipt address, and whether the card is kept
 
     private func buildAgreements() {
         if pay.receiptEmail {
@@ -428,34 +435,12 @@ final class PayView: UIView {
             emailGroup = group
         }
 
-        let checks = UIStackView()
-        checks.axis = .vertical
-        checks.spacing = 6
         if let save = pay.save {
-            let row = CheckRow(theme: theme, text: save.label, isOn: save.checked)
+            let row = ToggleRow(theme: theme, text: save.label, isOn: save.checked)
             row.accessibilityIdentifier = "rais.save"
-            checks.addArrangedSubview(row)
+            column.addArrangedSubview(row)
             saveRow = row
         }
-        termsRow.accessibilityIdentifier = "rais.terms"
-        termsRow.onChange = { [weak self] in
-            guard let self, self.termsRow.isOn else { return }
-            self.termsError.isHidden = true
-        }
-        termsRow.onLink = { [weak self] in
-            guard let self, let url = self.pay.termsURL else { return }
-            self.onOpen?(url)
-        }
-        checks.addArrangedSubview(termsRow)
-        termsError.text = words["js.terms"]
-        termsError.font = theme.font(13, .regular, style: .footnote)
-        termsError.textColor = theme.danger
-        termsError.numberOfLines = 0
-        termsError.adjustsFontForContentSizeCategory = true
-        termsError.isHidden = true
-        checks.addArrangedSubview(termsError)
-        column.addArrangedSubview(checks)
-        if let last = column.arrangedSubviews.dropLast().last { column.setCustomSpacing(16, after: last) }
     }
 
     // MARK: Reading what was typed
@@ -512,23 +497,12 @@ final class PayView: UIView {
             }
         }
 
-        let accepted = termsRow.isOn
-        termsRow.hasError = !accepted
-        termsError.isHidden = accepted
-        if !accepted { UIAccessibility.post(notification: .announcement, argument: termsError.text) }
-
         if let firstWrong {
             firstWrong.focus()
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             return nil
         }
-        guard accepted, let method else {
-            if !accepted {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                onFocus?(termsRow)
-            }
-            return nil
-        }
+        guard let method else { return nil }
         return Submission(method: method, email: email)
     }
 

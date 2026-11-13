@@ -6,6 +6,10 @@ extension RaisCheckout {
         /// Colors, corner radius, font and light/dark mode of the checkout page.
         public var appearance = Appearance()
 
+        /// The picture shown above the name of who is paid, instead of the logo that merchant set on its Raïs account. Optional: without it the
+        /// checkout shows the account's own logo, or the first letter of its name when it has none. Square pictures look best.
+        public var merchantLogo: UIImage?
+
         /// How the checkout is drawn: by the app's own controls (the default), or as the hosted web page.
         public var style: Style = .native
 

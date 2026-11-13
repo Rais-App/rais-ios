@@ -108,7 +108,7 @@ Colors may be dynamic `UIColor`s: the SDK reads them for the scheme on screen an
 ## What the payer sees
 
 - **The payment**: the store (its logo), the amount, the description, and "View details" for the order's lines, the reference and the validity.
-- **The ways to pay**: a card typed now (number, expiry, CVC, name: formatted as typed, checked before anything is sent), the cards a store keeps for its customer, and, for a payer the checkout has identified, their Raïs balance and the cards of their Raïs account. The optional receipt address, "save this card" and the terms are there when the payment calls for them.
+- **The ways to pay**: a card typed now (number, expiry, CVC, name: formatted as typed, checked before anything is sent), the cards a store keeps for its customer, and, for a payer the checkout has identified, their Raïs balance and the cards of their Raïs account. The optional receipt address and "save this card" are there when the payment calls for them.
 - **The bank's code** (3-D Secure), in six cells, with the system's own code suggestion and paste.
 - **The result**: paid, refused (with the bank's reason), expired, cancelled, or still being confirmed with the bank (the screen keeps asking). A paid payment offers its PDF receipt (view, share, print) and the receipt by e-mail.
 

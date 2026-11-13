@@ -11,11 +11,24 @@ enum CheckoutURL {
     static func isTrusted(_ url: URL, additionalHosts: [String]) -> Bool {
         guard let scheme = url.scheme?.lowercased(), let host = url.host?.lowercased() else { return false }
         if isLoopback(host) { return scheme == "http" || scheme == "https" }
+        let listed = additionalHosts.contains { $0.lowercased() == host }
+        // A development server on the local network (a phone talking to the developer's Mac) has no certificate: plain http is accepted for
+        // a private address, and only when the app listed that very address itself.
+        if scheme == "http" { return listed && isPrivateNetwork(host) }
         guard scheme == "https" else { return false }
         if host == "rais.app" || host.hasSuffix(".rais.app") { return true }
-        return additionalHosts.contains { extra in
-            let trusted = extra.lowercased()
-            return host == trusted
+        return listed
+    }
+
+    /// A literal address of a private network (10/8, 172.16/12, 192.168/16, and 100.64/10 for a mesh VPN), or a `.local` name.
+    static func isPrivateNetwork(_ host: String) -> Bool {
+        if host.hasSuffix(".local") { return true }
+        let parts = host.split(separator: ".").compactMap { Int($0) }
+        guard parts.count == 4, host.split(separator: ".").count == 4, parts.allSatisfy({ (0...255).contains($0) }) else { return false }
+        switch (parts[0], parts[1]) {
+        case (10, _), (192, 168): return true
+        case (172, 16...31), (100, 64...127): return true
+        default: return false
         }
     }
 

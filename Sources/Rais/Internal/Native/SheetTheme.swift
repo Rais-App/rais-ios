@@ -24,6 +24,7 @@ struct SheetTheme {
     /// The corner radius of buttons and fields; cards are a little rounder.
     let radius: CGFloat
     private let design: UIFontDescriptor.SystemDesign
+    private let provider: ((CGFloat, UIFont.Weight) -> UIFont?)?
 
     var cardRadius: CGFloat { radius == 0 ? 0 : radius + 4 }
 
@@ -58,6 +59,7 @@ struct SheetTheme {
         success = colors.success ?? pair(0x147A39, 0x4ADE80)
         warning = pair(0x9A5D06, 0xFBBF24)
         radius = min(max(appearance.cornerRadius ?? 12, 0), 24)
+        provider = appearance.fontProvider
         switch appearance.fontFamily {
         case .default, .system: design = .default
         case .serif: design = .serif
@@ -72,6 +74,15 @@ struct SheetTheme {
 
     /// A font of the app's chosen family that grows with the device's text size. `digits`: figures of equal width (amounts, card numbers).
     func font(_ size: CGFloat, _ weight: UIFont.Weight = .regular, style: UIFont.TextStyle = .body, digits: Bool = false) -> UIFont {
+        if let own = provider?(size, weight) {
+            var font = own
+            if digits {
+                font = UIFont(descriptor: own.fontDescriptor.addingAttributes([.featureSettings: [[
+                    UIFontDescriptor.FeatureKey.type: kNumberSpacingType, UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector,
+                ]]]), size: size)
+            }
+            return UIFontMetrics(forTextStyle: style).scaledFont(for: font, maximumPointSize: size * 1.5)
+        }
         var descriptor = UIFont.systemFont(ofSize: size, weight: weight).fontDescriptor
         if design != .default, let designed = descriptor.withDesign(design) { descriptor = designed }
         if digits {

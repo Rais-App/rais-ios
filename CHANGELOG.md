@@ -2,6 +2,16 @@
 
 All notable changes to the Raïs iOS SDK. The SDK follows [semantic versioning](https://semver.org). The checkout page itself is hosted by Raïs and improves without an SDK release; changes to what the page sends the app are announced here first.
 
+## Unreleased
+
+- A development server on the local network works on a real phone: `additionalTrustedHosts` now accepts a private address (192.168.x.x, 10.x, 172.16-31.x, 100.64-127.x, `*.local`) over plain http. Public hosts still need https.
+- `appearance.fontProvider`: the native checkout in the app's own typeface.
+- The checkout scrolls under everything: nothing above the page but a glass close button (what scrolls under the status bar fades out), and the pay button sits in a floating pane of glass (Liquid Glass on iOS 26, the system's thin blur before).
+- The "I accept the terms" checkbox is gone. "Save this card" is a switch.
+- The ways to pay lead with their mark (the card's network, the Raïs mark) and the chosen one carries a check.
+- `Configuration.merchantLogo`: a picture to show instead of the logo of the merchant's Raïs account.
+- A top-up opened by the Raïs app offers the cards of the person's own Raïs account (server: `GET /pay/{id}/sheet` lists them for the top-up's owner, `POST /pay/{id}/process-wallet-card` charges one).
+
 ## 1.0.0
 
 First release.

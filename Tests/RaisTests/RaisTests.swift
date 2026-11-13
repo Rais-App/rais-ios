@@ -13,6 +13,16 @@ final class CheckoutURLTests: XCTestCase {
         XCTAssertTrue(trusted("https://sandbox.pay.rais.app/x"))
     }
 
+    func testALocalNetworkServerIsTrustedOverHTTPOnlyWhenListed() {
+        XCTAssertFalse(trusted("http://192.168.1.20:8585/pay/x"))
+        XCTAssertTrue(trusted("http://192.168.1.20:8585/pay/x", extra: ["192.168.1.20"]))
+        XCTAssertTrue(trusted("http://100.101.102.103:8585/pay/x", extra: ["100.101.102.103"]))
+        XCTAssertTrue(trusted("http://macbook.local:8585/pay/x", extra: ["macbook.local"]))
+        XCTAssertFalse(trusted("http://example.com/pay/x", extra: ["example.com"]))
+        XCTAssertFalse(trusted("http://8.8.8.8/pay/x", extra: ["8.8.8.8"]))
+        XCTAssertFalse(trusted("http://192.168.1.20.evil.example/pay/x", extra: ["192.168.1.20"]))
+    }
+
     func testPlainHTTPAndLookalikesAreRefused() {
         XCTAssertFalse(trusted("http://pay.rais.app/pay/x"))
         XCTAssertFalse(trusted("https://rais.app.evil.example/pay/x"))
