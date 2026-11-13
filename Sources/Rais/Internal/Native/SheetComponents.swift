@@ -691,7 +691,7 @@ final class AvatarView: ThemedView {
         initial.textColor = theme.secondary
         initial.textAlignment = .center
         picture.contentMode = .scaleAspectFill
-        picture.backgroundColor = .white
+        picture.backgroundColor = .clear   // a logo with soft corners shows the tile through them, never a white square
         picture.isHidden = true
         for view in [initial, picture] {
             view.translatesAutoresizingMaskIntoConstraints = false

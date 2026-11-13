@@ -20,9 +20,10 @@ enum CheckoutURL {
         return listed
     }
 
-    /// A literal address of a private network (10/8, 172.16/12, 192.168/16, and 100.64/10 for a mesh VPN), or a `.local` name.
+    /// A literal address of a private network (10/8, 172.16/12, 192.168/16, and 100.64/10 for a mesh VPN), a `.local` name, or a
+    /// machine's name on a Tailscale network (`*.ts.net`: reachable only from inside that network, and encrypted by it).
     static func isPrivateNetwork(_ host: String) -> Bool {
-        if host.hasSuffix(".local") { return true }
+        if host.hasSuffix(".local") || host.hasSuffix(".ts.net") { return true }
         let parts = host.split(separator: ".").compactMap { Int($0) }
         guard parts.count == 4, host.split(separator: ".").count == 4, parts.allSatisfy({ (0...255).contains($0) }) else { return false }
         switch (parts[0], parts[1]) {

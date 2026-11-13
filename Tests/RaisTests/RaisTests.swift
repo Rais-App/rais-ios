@@ -18,6 +18,8 @@ final class CheckoutURLTests: XCTestCase {
         XCTAssertTrue(trusted("http://192.168.1.20:8585/pay/x", extra: ["192.168.1.20"]))
         XCTAssertTrue(trusted("http://100.101.102.103:8585/pay/x", extra: ["100.101.102.103"]))
         XCTAssertTrue(trusted("http://macbook.local:8585/pay/x", extra: ["macbook.local"]))
+        XCTAssertTrue(trusted("http://jack.tail1234.ts.net:8585/pay/x", extra: ["jack.tail1234.ts.net"]))
+        XCTAssertFalse(trusted("http://jack.tail1234.ts.net:8585/pay/x"))
         XCTAssertFalse(trusted("http://example.com/pay/x", extra: ["example.com"]))
         XCTAssertFalse(trusted("http://8.8.8.8/pay/x", extra: ["8.8.8.8"]))
         XCTAssertFalse(trusted("http://192.168.1.20.evil.example/pay/x", extra: ["192.168.1.20"]))
