@@ -2,7 +2,9 @@
 
 All notable changes to the Raïs iOS SDK. The SDK follows [semantic versioning](https://semver.org). The checkout page itself is hosted by Raïs and improves without an SDK release; changes to what the page sends the app are announced here first.
 
-## Unreleased
+## 1.0.0 (2026-11-14)
+
+First release.
 
 - The SDK's own words (close, "Can't load the payment page", Try again) follow `configuration.language`, not only the phone's language. Button titles shrink further before being cut, for apps with a wider typeface.
 - Keyboard: a field typed in is always fully above the keyboard and the pay button. It is brought into view again once the keyboard has settled (or changed height), the last field on the page gets room to rise clear of the button, and the e-mail receipt form comes into view whole (its note and its Send button included).
@@ -13,10 +15,6 @@ All notable changes to the Raïs iOS SDK. The SDK follows [semantic versioning](
 - The ways to pay lead with their mark (the card's network, the Raïs mark) and the chosen one carries a check.
 - `Configuration.merchantLogo`: a picture to show instead of the logo of the merchant's Raïs account.
 - A top-up opened by the Raïs app offers the cards of the person's own Raïs account (server: `GET /pay/{id}/sheet` lists them for the top-up's owner, `POST /pay/{id}/process-wallet-card` charges one).
-
-## 1.0.0
-
-First release.
 
 - `RaisCheckout`: shows a payment's checkout in a native screen (UIKit `present(from:)`, async `present(from:)`, and a SwiftUI `.raisCheckout` modifier) and returns `.completed`, `.cancelled` or `.failed`.
 - The checkout is drawn with native controls (`Configuration.style = .native`, the default): the payment and its details, card fields for CIB and Edahabia, a store's saved cards, the payer's Raïs balance and cards, the receipt address, the bank's confirmation code, and the result with its PDF receipt and the receipt by e-mail. It reads `GET /pay/{id}/sheet` and makes the hosted page's own calls. No robot check is shown: its proof of work is solved in the background.
