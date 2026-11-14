@@ -59,7 +59,7 @@ final class SheetButton: UIControl {
         label.font = theme.font(kind == .plain ? 15 : 17, .semibold, style: .headline)
         label.adjustsFontForContentSizeCategory = true
         label.adjustsFontSizeToFitWidth = true
-        label.minimumScaleFactor = 0.75
+        label.minimumScaleFactor = 0.6   // (an app's own, wider typeface in a half-width button: "Envoyer par e-mail" still fits)
         label.textAlignment = .center
         icon.contentMode = .scaleAspectFit
         icon.setContentHuggingPriority(.required, for: .horizontal)

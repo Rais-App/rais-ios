@@ -40,6 +40,7 @@ final class WebCheckoutViewController: UIViewController {
         self.checkoutURL = url
         self.configuration = configuration
         self.completion = completion
+        Strings.language = configuration.language.code
         super.init(nibName: nil, bundle: nil)
         switch configuration.appearance.colorScheme {
         case .light: overrideUserInterfaceStyle = .light

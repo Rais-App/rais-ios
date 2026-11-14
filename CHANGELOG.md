@@ -4,6 +4,7 @@ All notable changes to the Raïs iOS SDK. The SDK follows [semantic versioning](
 
 ## Unreleased
 
+- The SDK's own words (close, "Can't load the payment page", Try again) follow `configuration.language`, not only the phone's language. Button titles shrink further before being cut, for apps with a wider typeface.
 - Keyboard: a field typed in is always fully above the keyboard and the pay button. It is brought into view again once the keyboard has settled (or changed height), the last field on the page gets room to rise clear of the button, and the e-mail receipt form comes into view whole (its note and its Send button included).
 - A development server on the local network works on a real phone: `additionalTrustedHosts` now accepts a private address (192.168.x.x, 10.x, 172.16-31.x, 100.64-127.x, `*.local`) over plain http. Public hosts still need https.
 - `appearance.fontProvider`: the native checkout in the app's own typeface.

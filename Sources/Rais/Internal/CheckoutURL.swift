@@ -109,8 +109,15 @@ enum Strings {
     static func expired() -> String { text("expired", "The payment expired.") }
     static func invalidURL() -> String { text("invalid_url", "This is not a valid Raïs checkout address.") }
 
+    /// The language the app opened the checkout in (`Configuration.language`), set when a checkout screen is made; nil follows the phone.
+    /// The SDK's own words (close, "Can't load", retry: what is said before the payment's details arrive) are then in the page's language.
+    static var language: String?
+
     private static func text(_ key: String, _ fallback: String) -> String {
-        NSLocalizedString(key, tableName: "Localizable", bundle: resources, value: fallback, comment: "")
+        if let code = language, let path = resources.path(forResource: code, ofType: "lproj"), let bundle = Bundle(path: path) {
+            return bundle.localizedString(forKey: key, value: fallback, table: "Localizable")
+        }
+        return NSLocalizedString(key, tableName: "Localizable", bundle: resources, value: fallback, comment: "")
     }
 
     private final class BundleToken {}

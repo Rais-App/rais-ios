@@ -65,6 +65,7 @@ final class NativeCheckoutViewController: UIViewController {
         checkoutURL = url
         self.configuration = configuration
         self.completion = completion
+        Strings.language = configuration.language.code
         theme = SheetTheme(configuration.appearance)
         notice = NoticeView(theme: theme, tone: .danger)
         primary = SheetButton(theme: theme, kind: .primary, title: "")
