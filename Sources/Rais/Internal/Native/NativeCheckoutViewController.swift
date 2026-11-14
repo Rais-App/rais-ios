@@ -54,6 +54,8 @@ final class NativeCheckoutViewController: UIViewController {
     private var leftForApp = false
     private var receiptFile: URL?
     private var keyboardUp = false
+    /// The field (with what is said under it) that has the keyboard: brought into view again once the keyboard has settled.
+    private weak var focused: UIView?
     private var secondaryWanted = false
     /// What `applyDirection` set, so that it can set it again the other way when the language of the checkout changes.
     private var directed = UISemanticContentAttribute.unspecified
@@ -102,6 +104,8 @@ final class NativeCheckoutViewController: UIViewController {
         buildChrome()
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillShowNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardSettled(_:)), name: UIResponder.keyboardDidShowNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardSettled(_:)), name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(cameBack), name: UIApplication.didBecomeActiveNotification, object: nil)
         start()
     }
@@ -198,7 +202,9 @@ final class NativeCheckoutViewController: UIViewController {
         super.viewDidLayoutSubviews()
         barBottom?.constant = keyboardUp ? -8 : (view.safeAreaInsets.bottom > 0 ? 12 : -10)
         let top = view.safeAreaInsets.top + 10
-        let bottom = bar.isHidden ? view.safeAreaInsets.bottom : max(0, view.bounds.maxY - bar.frame.minY)
+        // (16 more than the pane of the button covers: the last field on the page, typed in with the keyboard up, can rise clear of the
+        // pane with room to spare instead of stopping against its edge)
+        let bottom = bar.isHidden ? view.safeAreaInsets.bottom : max(0, view.bounds.maxY - bar.frame.minY) + 16
         guard abs(scroll.contentInset.top - top) > 0.5 || abs(scroll.contentInset.bottom - bottom) > 0.5 else { return }
         let restsAtTop = scroll.contentOffset.y <= -scroll.contentInset.top + 0.5
         scroll.contentInset = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
@@ -346,7 +352,7 @@ final class NativeCheckoutViewController: UIViewController {
             let page = PayView(context: context, sheet: sheet, payment: payment, pay: pay, canOpenApp: canOpenApp)
             page.onChoice = { [weak self, weak page] in if let page { self?.primary.title = page.buttonTitle } }
             page.onCardEditing = { [weak self] in self?.prepareSession() }
-            page.onFocus = { [weak self] view in self?.reveal(view) }
+            page.onFocus = { [weak self] view in self?.focused = view; self?.reveal(view) }
             page.onResize = { [weak self] in self?.view.layoutIfNeeded() }
             if let logo = configuration.merchantLogo { page.show(logo: logo, animated: false) }
             page.onSignOut = { [weak self] in self?.signOut() }
@@ -372,7 +378,7 @@ final class NativeCheckoutViewController: UIViewController {
             page.onViewReceipt = { [weak self] in self?.openReceipt() }
             page.onEmailReceipt = { [weak self] address in self?.emailReceipt(to: address) }
             page.onContact = { address in if let url = URL(string: "mailto:\(address)") { UIApplication.shared.open(url) } }
-            page.onFocus = { [weak self] view in self?.reveal(view) }
+            page.onFocus = { [weak self] view in self?.focused = view; self?.reveal(view) }
             page.onResize = { [weak self] in self?.view.layoutIfNeeded() }
             outcomeView = page
             if result.confirming != nil {
@@ -519,6 +525,15 @@ final class NativeCheckoutViewController: UIViewController {
             self.view.setNeedsLayout()
             self.view.layoutIfNeeded()
         }
+    }
+
+    /// The keyboard has finished rising (or changed height: the suggestions bar, another keyboard). The insets follow the pane of the button
+    /// that rides on it, so the field being typed in is brought into view again now, against the final room: a field revealed while the
+    /// keyboard was still on its way could otherwise end under it.
+    @objc private func keyboardSettled(_ note: Notification) {
+        guard keyboardUp, let focused, focused.window != nil else { return }
+        view.layoutIfNeeded()
+        reveal(focused)
     }
 
     /// What the bar shows under its button. With the keyboard up it keeps only what acts: the room goes to the fields.

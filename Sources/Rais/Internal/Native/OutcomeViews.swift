@@ -237,8 +237,9 @@ final class OutcomeView: UIView {
                 send.onTap { [weak self] in self?.sendTyped() }
                 cell.onChange = { [weak group] in group?.setError(nil) }
                 cell.onReturn = { [weak self] in self?.sendTyped() }
-                group.onFocus = { [weak self, weak group] _ in if let group { self?.onFocus?(group) } }
                 let form = UIStackView(arrangedSubviews: [group, send])
+                // the whole form comes into view above the keyboard: the field, what is said under it, and its Send button
+                group.onFocus = { [weak self, weak form] _ in if let form { self?.onFocus?(form) } }
                 form.axis = .vertical
                 form.spacing = 10
                 form.isHidden = true
