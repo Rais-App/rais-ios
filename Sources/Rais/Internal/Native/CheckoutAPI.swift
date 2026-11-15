@@ -105,9 +105,7 @@ final class CheckoutAPI {
     }
 
     func invalidate() {
-        ended.lock()
-        isInvalidated = true
-        ended.unlock()
+        ended.withLock { isInvalidated = true }
         passTask?.cancel()
         session.invalidateAndCancel()
     }
@@ -370,10 +368,7 @@ final class CheckoutAPI {
     }
 
     private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        ended.lock()
-        let closed = isInvalidated
-        ended.unlock()
-        guard !closed else { throw Failure.connection }
+        guard !ended.withLock({ isInvalidated }) else { throw Failure.connection }
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw Failure.connection }
