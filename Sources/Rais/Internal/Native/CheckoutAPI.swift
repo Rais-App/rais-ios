@@ -70,6 +70,10 @@ final class CheckoutAPI {
     private let checkoutURL: URL
     private let session: URLSession
     private let redirects = RedirectPolicy()
+    /// Set once `invalidate()` ran. A call on an invalidated `URLSession` does not fail, it raises an Objective-C exception that kills the app
+    /// (the payer returning from the Raïs app after the checkout had ended), so every call checks this first.
+    private let ended = NSLock()
+    private var isInvalidated = false
     /// A card of the payer to start from, named by the app's checkout session.
     private var preselectedCard: String?
     private var entered = false
@@ -101,8 +105,30 @@ final class CheckoutAPI {
     }
 
     func invalidate() {
+        ended.lock()
+        isInvalidated = true
+        ended.unlock()
         passTask?.cancel()
         session.invalidateAndCancel()
+    }
+
+    /// Where "Sign in with Raïs" starts for this payment: the checkout sends the payer to the Raïs website's sign-in and, once they are signed in,
+    /// hands the answer to `callbackScheme` (a scheme made up for this one sign-in).
+    func signInURL(callbackScheme: String) -> URL {
+        var parts = URLComponents(url: location.pageURL.appendingPathComponent("raisid").appendingPathComponent("start"), resolvingAgainstBaseURL: false)!
+        parts.queryItems = [URLQueryItem(name: "native", value: callbackScheme)]
+        return parts.url!
+    }
+
+    /// Keeps the payer session the sign-in handed over as the page's own cookie (this payment only, as the page sets it): from now on the checkout
+    /// knows who is paying and offers their balance and their cards.
+    func adoptPayerSession(_ value: String) {
+        guard let host = location.origin.host else { return }
+        var properties: [HTTPCookiePropertyKey: Any] = [
+            .name: "rais_payer", .value: value, .domain: host, .path: "/pay/\(location.paymentID)", .expires: Date().addingTimeInterval(900),
+        ]
+        if location.origin.scheme == "https" { properties[.secure] = "TRUE" }
+        if let cookie = HTTPCookie(properties: properties) { session.configuration.httpCookieStorage?.setCookie(cookie) }
     }
 
     /// The cookies of this checkout, for the web checkout that takes over when the payment cannot be paid natively.
@@ -344,6 +370,10 @@ final class CheckoutAPI {
     }
 
     private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        ended.lock()
+        let closed = isInvalidated
+        ended.unlock()
+        guard !closed else { throw Failure.connection }
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw Failure.connection }

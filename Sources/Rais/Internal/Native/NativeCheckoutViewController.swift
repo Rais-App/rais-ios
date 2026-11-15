@@ -52,6 +52,7 @@ final class NativeCheckoutViewController: UIViewController {
     private var lastPrepare = Date.distantPast
     private var poller: Task<Void, Never>?
     private var leftForApp = false
+    private var webSignIn: WebSignIn?
     private var receiptFile: URL?
     private var keyboardUp = false
     /// The field (with what is said under it) that has the keyboard: brought into view again once the keyboard has settled.
@@ -85,6 +86,7 @@ final class NativeCheckoutViewController: UIViewController {
 
     deinit {
         poller?.cancel()
+        webSignIn?.cancel()
         if let receiptFile { try? FileManager.default.removeItem(at: receiptFile.deletingLastPathComponent()) }
     }
 
@@ -125,6 +127,7 @@ final class NativeCheckoutViewController: UIViewController {
         scroll.addSubview(stage)
         let tap = UITapGestureRecognizer(target: self, action: #selector(backgroundTapped))
         tap.cancelsTouchesInView = false
+        tap.delegate = self
         scroll.addGestureRecognizer(tap)
 
         topFade.alpha = 0
@@ -349,8 +352,7 @@ final class NativeCheckoutViewController: UIViewController {
             }
             lastOutcome = nil
             api.warmUp()
-            let canOpenApp = pay.appURL.map { UIApplication.shared.canOpenURL($0) } ?? false
-            let page = PayView(context: context, sheet: sheet, payment: payment, pay: pay, canOpenApp: canOpenApp)
+            let page = PayView(context: context, sheet: sheet, payment: payment, pay: pay)
             page.onChoice = { [weak self, weak page] in if let page { self?.primary.title = page.buttonTitle } }
             page.onCardEditing = { [weak self] in self?.prepareSession() }
             page.onFocus = { [weak self] view in self?.focused = view; self?.reveal(view) }
@@ -358,9 +360,8 @@ final class NativeCheckoutViewController: UIViewController {
             if let logo = configuration.merchantLogo { page.show(logo: logo, animated: false) }
             page.onSignOut = { [weak self] in self?.signOut() }
             page.onOpen = { url in UIApplication.shared.open(url) }
-            page.onOpenApp = { [weak self] url in
-                self?.leftForApp = true
-                UIApplication.shared.open(url)
+            page.onOpenApp = { [weak self, weak page] url in
+                self?.openRaisApp(url) { page?.appOpenEnded() }
             }
             payView = page
             primary.title = page.buttonTitle
@@ -567,6 +568,18 @@ final class NativeCheckoutViewController: UIViewController {
 
     @objc private func backgroundTapped() { view.endEditing(true) }
 
+    /// A tap on empty space closes the keyboard. A tap on a control (a row, a button, a switch) or a field is that control's: closing the
+    /// keyboard first moves the layout under the finger and the control never sees its tap, so the payer would tap twice.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        var view = touch.view
+        while let current = view, current !== scroll {
+            if current is UIControl || current is UITextField || current is UITextView { return false }
+            if current.gestureRecognizers?.contains(where: { $0 is UITapGestureRecognizer && $0 !== gestureRecognizer }) == true { return false }
+            view = current.superview
+        }
+        return true
+    }
+
     // MARK: Paying
 
     private func primaryTapped() {
@@ -685,6 +698,27 @@ final class NativeCheckoutViewController: UIViewController {
         guard phase == .pay, !isBusy, Date().timeIntervalSince(lastPrepare) > 15 else { return }
         lastPrepare = Date()
         Task { [weak self] in try? await self?.ensureSession() }   // said again when the payer pays
+    }
+
+    /// "Pay with Raïs" without the Raïs app: sign in on the Raïs website, then pay from the balance or a saved card here, natively.
+    private func signInWithRais() {
+        guard let api, !finished, webSignIn == nil else { return }
+        let scheme = WebSignIn.makeScheme()
+        let flow = WebSignIn()
+        webSignIn = flow
+        flow.start(url: api.signInURL(callbackScheme: scheme), scheme: scheme, anchor: view.window) { [weak self] outcome in
+            guard let self, !self.finished else { return }
+            self.webSignIn = nil
+            switch outcome {
+            case .signedIn(let session):
+                api.adoptPayerSession(session)
+                self.load(.silently) { try await api.sheet() }
+            case .cancelled:
+                break
+            case .failed:
+                self.showNotice(self.context?.words["wallet.sign_in_failed"])
+            }
+        }
     }
 
     private func signOut() {
@@ -816,11 +850,34 @@ final class NativeCheckoutViewController: UIViewController {
         }
     }
 
+    /// Hands the payment to the Raïs app. On Raïs' own pay host the payment's https address is tried first: iOS opens the app straight from it,
+    /// without asking "wants to open Raïs?". Anywhere else (a test server, a payer without the app, a link iOS has not associated yet) the app's own
+    /// address is used, which iOS asks about once. There is no `canOpenURL` on purpose: it would need the host app to list the `rais` scheme.
+    private func openRaisApp(_ appURL: URL, done: @escaping () -> Void) {
+        leftForApp = true
+        let finish: (Bool) -> Void = { [weak self] opened in
+            DispatchQueue.main.async {
+                done()
+                if !opened {
+                    // The Raïs app is not here (or the payer declined to open it): the same button signs them in with Raïs on the web instead
+                    self?.leftForApp = false
+                    self?.signInWithRais()
+                }
+            }
+        }
+        let open = { UIApplication.shared.open(appURL, options: [:], completionHandler: finish) }
+        guard let api, api.location.origin.host == "pay.rais.app" else { return open() }
+        UIApplication.shared.open(api.location.pageURL, options: [.universalLinksOnly: true]) { opened in
+            if opened { finish(true) } else { DispatchQueue.main.async(execute: open) }
+        }
+    }
+
     /// Back from the Raïs app, where the payer may have paid this very payment: read it again.
     @objc private func cameBack() {
-        guard leftForApp, phase == .pay, !isBusy else { return }
+        guard !finished, leftForApp, phase == .pay, !isBusy, let api else { return }
         leftForApp = false
-        reload(.silently)
+        // `fresh`: if the payer did pay it there, this reads "Payment Successful", not "Invoice Already Paid" (it changes words only)
+        load(.silently) { try await api.sheet(fresh: true) }
     }
 
     // MARK: The web checkout, inside this screen
@@ -860,6 +917,7 @@ final class NativeCheckoutViewController: UIViewController {
         if let web, forced == nil { return web.finish() }   // the web checkout knows how its payment ended, and reports here
         guard !finished else { return }
         finished = true
+        NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
         poller?.cancel()
         let result = forced ?? makeResult()
         if let api {
@@ -893,6 +951,8 @@ final class NativeCheckoutViewController: UIViewController {
         }
     }
 }
+
+extension NativeCheckoutViewController: UIGestureRecognizerDelegate {}
 
 extension NativeCheckoutViewController: UIScrollViewDelegate {
     /// What scrolls under the status bar fades into the page there, so the clock stays readable; at rest there is nothing over the page.

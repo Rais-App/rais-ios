@@ -2,6 +2,14 @@
 
 All notable changes to the Raïs iOS SDK. The SDK follows [semantic versioning](https://semver.org). The checkout page itself is hosted by Raïs and improves without an SDK release; changes to what the page sends the app are announced here first.
 
+## Unreleased
+
+- **Pay with Raïs**, first on the screen when the store can be paid from a Raïs wallet: with the Raïs app (it opens on the payment, the payer confirms with Face ID and the app brings them back to your app through the payment's `success_url`), or, without the app, by signing in with Raïs on the Raïs website in the system's sign-in sheet and then paying from the balance or a saved card in the SDK's own screen. No configuration, no `LSApplicationQueriesSchemes`.
+- Choosing "Use another card" folds the saved ways to pay (balance, saved cards) away so the whole card form fits on screen; the "Use another card" row itself then reads "Use a saved card" and brings them back, and picking one of them hides the card form again.
+- The SwiftUI `raisCheckout` modifier no longer ignores a checkout URL that is set together with, or after, `isPresented` (it read a stale copy of the URL). When it cannot find a screen to present from it now reports `.failed(.cannotPresent)` instead of staying silent.
+- Back from the Raïs app, a payment that was just made reads "Payment Successful" (not "Invoice Already Paid").
+- Server (additive): `GET /m/v1/payments/{id}` carries `return_urls`, `POST /m/v1/payments/{id}/pay` carries `return_url`; `GET /pay/{id}/raisid/start?native=raiscb-…` hands the payer session to the app.
+
 ## 1.0.0 (2026-11-14)
 
 First release.

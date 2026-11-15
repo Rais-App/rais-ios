@@ -114,7 +114,15 @@ Colors may be dynamic `UIColor`s: the SDK reads them for the scheme on screen an
 
 The words, the amounts and every rule come from Raïs' server, in the payer's language, so the screen always says what the hosted page says. A payment whose card must be typed on the bank's own page (`mode: "raw"`) is shown as that page, in the same screen, and so is any payment on a server that has no native checkout: the SDK falls back by itself.
 
-To offer "Open in the Raïs app" to payers who have it, add `rais` to `LSApplicationQueriesSchemes` in your Info.plist. Without it the button is simply not shown.
+### Paying with Raïs
+
+When the store can be paid from a Raïs wallet, the screen leads with a **Pay with Raïs** button, above the card form. There is nothing to configure and nothing to add to your Info.plist:
+
+- If the payer has the **Raïs app**, it opens on this payment (iOS asks once, "wants to open Raïs", unless the checkout is on `pay.rais.app`, which opens it straight away). They confirm with Face ID, from their balance or a card of their Raïs account, and the app offers **Back to <your app>**: it opens the payment's `success_url`. The checkout screen reads the payment again as soon as your app is in front, so it shows the result by itself. Give the payment a `success_url` that opens your app (a URL scheme or a universal link you handle) to get that button.
+- If they **do not have the app**, the same button signs them in with Raïs on the Raïs website, in the system's sign-in sheet (it shares Safari's sign-ins, like PayPal's), and the payer then pays from their balance or a saved card in this very screen. The app never sees a password.
+- A payment can be paid from a Raïs wallet only when it is a live payment of an ordinary store (a test payment never offers it), and only while the wallet payments switch is on.
+
+Your server must still confirm a payment with the API or the signed webhook; the screen, the result and the redirects are for the payer.
 
 ## Security
 

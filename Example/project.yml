@@ -28,5 +28,9 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Raïs Example
+        # The way back from the Raïs app (a payment's success_url / cancel_url can be raisexample://...)
+        CFBundleURLTypes:
+          - CFBundleURLName: app.rais.example
+            CFBundleURLSchemes: [raisexample]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

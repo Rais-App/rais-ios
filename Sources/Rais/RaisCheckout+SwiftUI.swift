@@ -32,6 +32,9 @@ extension View {
 /// What the modifier keeps between SwiftUI updates: the checkout on screen, and the screen to present it from.
 private final class CheckoutHolder: ObservableObject {
     var checkout: RaisCheckout?
+    /// The newest `checkoutURL` the modifier was given. The closures SwiftUI calls on a change can hold an older copy of the modifier, whose
+    /// URL is still `nil` when `isPresented` and the URL turn up together; this is the one to read.
+    var url: URL?
     weak var presenter: UIViewController?
     /// Watches the binding while the checkout is on screen (see `watch`).
     var watcher: Timer?
@@ -56,8 +59,14 @@ private struct RaisCheckoutModifier: ViewModifier {
         content
             .background(RaisCheckoutAnchor(holder: holder).frame(width: 0, height: 0))
             .onChange(of: isPresented) { show in sync(show) }
-            .onChange(of: checkoutURL) { _ in sync(isPresented) }
-            .onAppear { sync(isPresented) }
+            .onChange(of: checkoutURL) { url in
+                holder.url = url
+                sync(isPresented)
+            }
+            .onAppear {
+                holder.url = checkoutURL
+                sync(isPresented)
+            }
     }
 
     private func sync(_ show: Bool) {
@@ -68,7 +77,7 @@ private struct RaisCheckoutModifier: ViewModifier {
             }
             return
         }
-        guard holder.checkout == nil, let url = checkoutURL else { return }
+        guard holder.checkout == nil, let url = holder.url else { return }
         let checkout = RaisCheckout(checkoutURL: url, configuration: configuration)
         holder.checkout = checkout
         present(checkout, attempts: 8)
@@ -81,9 +90,17 @@ private struct RaisCheckoutModifier: ViewModifier {
         let completion = onCompletion
         DispatchQueue.main.async {
             guard holder.checkout === checkout else { return }
-            guard let presenter = holder.presenter, presenter.viewIfLoaded?.window != nil else {
+            // The anchor sits in the view's own window. When it has none (the view is not on screen yet, or sits where SwiftUI gave it no
+            // window) the app's front screen takes over, so the checkout is shown wherever the app is.
+            let anchored = holder.presenter.flatMap { $0.viewIfLoaded?.window != nil ? $0 : nil }
+            guard let presenter = anchored ?? (attempts <= 0 ? Self.frontScreen() : nil) else {
                 if attempts > 0 {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { present(checkout, attempts: attempts - 1) }
+                } else {
+                    // never leave the modifier waiting on a checkout that cannot be shown: the next `isPresented = true` must be heard
+                    holder.checkout = nil
+                    binding.wrappedValue = false
+                    completion(.failed(RaisCheckout.Failure(code: .cannotPresent, message: "There is no screen to present the checkout from.", paymentID: nil)))
                 }
                 return
             }
@@ -95,6 +112,14 @@ private struct RaisCheckoutModifier: ViewModifier {
             }
             watch(checkout, binding: binding)
         }
+    }
+
+    /// The root screen of the app's foreground window, for when the anchor has no window.
+    private static func frontScreen() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        let window = scene?.windows.first { $0.isKeyWindow } ?? scene?.windows.first
+        return window?.rootViewController
     }
 
     /// Closes the checkout when the binding goes false, whether or not SwiftUI is updating this view. Reading a binding outside an update

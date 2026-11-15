@@ -519,6 +519,9 @@ final class ChoiceRow: UIControl {
     override var isEnabled: Bool { didSet { apply() } }
     override var isHighlighted: Bool { didSet { backgroundColor = isHighlighted ? theme.line : .clear } }
 
+    /// The row opens something (a chevron) instead of being a choice (a check mark).
+    var isDisclosure = false { didSet { apply() } }
+
     init(theme: SheetTheme, title text: String, detail sub: String?, latinTitle: Bool = false, mark: UIView? = nil) {
         self.theme = theme
         super.init(frame: .zero)
@@ -583,12 +586,123 @@ final class ChoiceRow: UIControl {
         detail.isHidden = text == nil
     }
 
+    func setTitle(_ text: String) {
+        title.text = text
+        accessibilityLabel = [text, detail.text].compactMap { $0 }.joined(separator: ", ")
+    }
+
     private func apply() {
-        check.image = Glyph.image(isSelected ? "checkmark.circle.fill" : "circle", size: 21, weight: isSelected ? .semibold : .light)
-        check.tintColor = isSelected ? theme.primary : theme.tertiary
+        if isDisclosure {
+            check.image = Glyph.image("chevron.down", size: 15, weight: .semibold)
+            check.tintColor = theme.secondary
+        } else {
+            check.image = Glyph.image(isSelected ? "checkmark.circle.fill" : "circle", size: 21, weight: isSelected ? .semibold : .light)
+            check.tintColor = isSelected ? theme.primary : theme.tertiary
+        }
         alpha = isEnabled ? 1 : 0.45
-        accessibilityTraits = isSelected ? [.button, .selected] : .button
+        accessibilityTraits = isSelected && !isDisclosure ? [.button, .selected] : .button
         if !isEnabled { accessibilityTraits.insert(.notEnabled) }
+    }
+}
+
+/// "Pay with Raïs": the way to pay in the Raïs app, with the person's balance or a saved card. One tap, a bordered card with the Raïs mark, so it
+/// reads as a way to pay of its own and not as a link.
+final class RaisPayRow: UIControl {
+    private let theme: SheetTheme
+    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let arrow = UIImageView()
+
+    override var isHighlighted: Bool {
+        didSet { UIView.animate(withDuration: 0.12) { self.backgroundColor = self.isHighlighted ? self.theme.line : self.theme.surface } }
+    }
+
+    /// The payer left for the app: a spinner takes the arrow's place until they are back or it did not open.
+    var isOpening = false {
+        didSet {
+            arrow.isHidden = isOpening
+            isOpening ? spinner.startAnimating() : spinner.stopAnimating()
+            isUserInteractionEnabled = !isOpening
+        }
+    }
+
+    init(theme: SheetTheme, title text: String, note: String) {
+        self.theme = theme
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        backgroundColor = theme.surface
+        layer.cornerRadius = theme.cardRadius
+        layer.cornerCurve = .continuous
+        layer.borderWidth = 1
+        isAccessibilityElement = true
+        accessibilityLabel = text
+        accessibilityHint = note
+        accessibilityTraits = .button
+        accessibilityIdentifier = "rais.wallet"
+
+        let mark = UIImageView(image: SheetAssets.image("rais-mark"))
+        mark.contentMode = .scaleAspectFit
+        mark.layer.cornerRadius = 9
+        mark.layer.cornerCurve = .continuous
+        mark.clipsToBounds = true
+        mark.translatesAutoresizingMaskIntoConstraints = false
+        mark.isUserInteractionEnabled = false
+
+        let title = UILabel()
+        title.text = text
+        title.font = theme.font(16, .semibold, style: .callout)
+        title.textColor = theme.text
+        title.numberOfLines = 2
+        title.adjustsFontForContentSizeCategory = true
+        let detail = UILabel()
+        detail.text = note
+        detail.font = theme.font(13, .regular, style: .footnote)
+        detail.textColor = theme.secondary
+        detail.numberOfLines = 0
+        detail.adjustsFontForContentSizeCategory = true
+        let words = UIStackView(arrangedSubviews: [title, detail])
+        words.axis = .vertical
+        words.spacing = 2
+
+        arrow.image = Glyph.image("chevron.right", size: 14, weight: .semibold)?.imageFlippedForRightToLeftLayoutDirection()
+        arrow.tintColor = theme.tertiary
+        arrow.contentMode = .center
+        arrow.setContentHuggingPriority(.required, for: .horizontal)
+        spinner.color = theme.secondary
+        spinner.hidesWhenStopped = true
+        let trailing = UIView()
+        trailing.translatesAutoresizingMaskIntoConstraints = false
+        for item in [arrow, spinner] {
+            item.translatesAutoresizingMaskIntoConstraints = false
+            trailing.addSubview(item)
+            NSLayoutConstraint.activate([item.centerXAnchor.constraint(equalTo: trailing.centerXAnchor), item.centerYAnchor.constraint(equalTo: trailing.centerYAnchor)])
+        }
+
+        let row = UIStackView(arrangedSubviews: [mark, words, trailing])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = 12
+        row.isUserInteractionEnabled = false
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            mark.widthAnchor.constraint(equalToConstant: 40), mark.heightAnchor.constraint(equalToConstant: 40),
+            trailing.widthAnchor.constraint(equalToConstant: 24), trailing.heightAnchor.constraint(equalToConstant: 24),
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 14),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 68),
+        ])
+        refreshBorder()
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    private func refreshBorder() { layer.borderColor = theme.border.resolvedColor(with: traitCollection).cgColor }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        refreshBorder()
     }
 }
 
@@ -612,17 +726,22 @@ final class GroupBox: ThemedView {
             column.leadingAnchor.constraint(equalTo: leadingAnchor),
             column.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
-        rows.forEach(add)
+        rows.forEach { add($0) }
     }
 
-    func add(_ row: UIView) {
+    /// Adds a row below the others, with a hairline above it; the hairline is returned so a row can be hidden together with it.
+    @discardableResult
+    func add(_ row: UIView) -> UIView? {
+        var separator: UIView?
         if !column.arrangedSubviews.isEmpty {
             let line = UIView()
             line.backgroundColor = theme.line
             line.heightAnchor.constraint(equalToConstant: 1).isActive = true
             column.addArrangedSubview(line)
+            separator = line
         }
         column.addArrangedSubview(row)
+        return separator
     }
 
     override func refresh() { layer.borderColor = cg(theme.border) }

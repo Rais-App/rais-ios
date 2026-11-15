@@ -112,9 +112,28 @@ struct ContentView: View {
         if let hex = defaults.string(forKey: "rais-primary"), let color = Color(hex: hex) { primary = color; customPrimary = true }
         if defaults.object(forKey: "rais-radius") != nil { radius = defaults.double(forKey: "rais-radius"); customRadius = true }
         if defaults.bool(forKey: "rais-present") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { present = true } }
+        // `-rais-tap rais.wallet -rais-tap-after 5`: for automated runs when the simulator's touch injection is unavailable, fire a control of the
+        // checkout by its accessibility identifier (a `touchUpInside` on the real control, exactly what a finger ends with) that many seconds after launch
+        if let id = defaults.string(forKey: "rais-tap") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + defaults.double(forKey: "rais-tap-after")) { Self.tap(identifier: id) }
+        }
         // `-rais-autoclose 5`: turn the binding off from code that many seconds after presenting (what an app does when its own state ends the payment)
         if defaults.object(forKey: "rais-autoclose") != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6 + defaults.double(forKey: "rais-autoclose")) { present = false }
+        }
+    }
+}
+
+extension ContentView {
+    /// Finds the control with this accessibility identifier in any window and sends it a tap.
+    static func tap(identifier: String) {
+        func find(_ view: UIView) -> UIControl? {
+            if let control = view as? UIControl, control.accessibilityIdentifier == identifier { return control }
+            for child in view.subviews { if let found = find(child) { return found } }
+            return nil
+        }
+        for window in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).flatMap(\.windows) {
+            if let control = find(window) { control.sendActions(for: .touchUpInside); return }
         }
     }
 }

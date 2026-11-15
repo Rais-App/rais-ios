@@ -18,6 +18,28 @@ final class NativeCheckoutTests: XCTestCase {
         XCTAssertFalse(session.isPlain, "the address that identifies the payer is visited once before the checkout is read")
     }
 
+    @MainActor func testSignInWithRaisStartsOnTheCheckoutWithAOneTimeSchemeThatTheServerAccepts() throws {
+        let api = CheckoutAPI(checkoutURL: URL(string: "https://pay.rais.app/pay/\(id)")!, location: try XCTUnwrap(CheckoutAPI.Location(URL(string: "https://pay.rais.app/pay/\(id)")!)), languageCode: nil)
+        defer { api.invalidate() }
+        let scheme = WebSignIn.makeScheme()
+        // the checkout takes `raiscb-` and 8 to 40 lower-case letters or digits (app/views/payment.py `_NATIVE_SCHEME`): never another app's scheme
+        XCTAssertNotNil(scheme.range(of: "^raiscb-[a-z0-9]{8,40}$", options: .regularExpression), scheme)
+        XCTAssertNotEqual(scheme, WebSignIn.makeScheme(), "every sign-in listens on its own scheme")
+        let url = api.signInURL(callbackScheme: scheme)
+        XCTAssertEqual(url.absoluteString, "https://pay.rais.app/pay/\(id)/raisid/start?native=\(scheme)")
+    }
+
+    @MainActor func testThePayerSessionTheSignInHandsOverBecomesThePagesOwnCookieForThisPaymentOnly() throws {
+        let api = CheckoutAPI(checkoutURL: URL(string: "https://pay.rais.app/pay/\(id)")!, location: try XCTUnwrap(CheckoutAPI.Location(URL(string: "https://pay.rais.app/pay/\(id)")!)), languageCode: nil)
+        defer { api.invalidate() }
+        api.adoptPayerSession("payload.mac")
+        let cookie = try XCTUnwrap(api.cookies.first { $0.name == "rais_payer" })
+        XCTAssertEqual(cookie.value, "payload.mac")
+        XCTAssertEqual(cookie.path, "/pay/\(id)")
+        XCTAssertEqual(cookie.domain, "pay.rais.app")
+        XCTAssertTrue(cookie.isSecure)
+    }
+
     func testAnAddressThatIsNotAPaymentGoesToTheWebCheckout() {
         for other in ["https://pay.rais.app/", "https://pay.rais.app/pay/not-a-payment", "https://pay.rais.app/lang/fr?next=%2Fpay%2F\(id)"] {
             XCTAssertNil(CheckoutAPI.Location(URL(string: other)!), other)

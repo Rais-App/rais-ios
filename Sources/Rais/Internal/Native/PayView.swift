@@ -8,6 +8,15 @@ final class PayView: UIView {
         case balance
         case card(Sheet.Pay.Card)
         case newCard
+
+        /// A name for a way to pay (a key for what hangs off it).
+        var key: String {
+            switch self {
+            case .balance: "balance"
+            case .card(let card): "card.\(card.id)"
+            case .newCard: "new"
+            }
+        }
     }
 
     struct Submission {
@@ -39,6 +48,13 @@ final class PayView: UIView {
     private var emailCell: InputCell?
     private var emailGroup: InputGroup?
     private var saveRow: ToggleRow?
+    private var appRow: RaisPayRow?
+    /// The hairline above each way to pay, and the way to bring back the saved ones after "another card" folded them away.
+    private var separators: [String: UIView] = [:]
+    private var newCardRow: ChoiceRow?
+    private var newCardGlyph: UIImageView?
+    private var choicesHeading: UILabel?
+    private var savedFolded = false
 
     private(set) var choice: Choice = .newCard
 
@@ -56,7 +72,7 @@ final class PayView: UIView {
 
     func show(logo: UIImage, animated: Bool = true) { avatar.show(logo, animated: animated) }
 
-    init(context: SheetContext, sheet: Sheet, payment: Sheet.Payment, pay: Sheet.Pay, canOpenApp: Bool) {
+    init(context: SheetContext, sheet: Sheet, payment: Sheet.Payment, pay: Sheet.Pay) {
         self.context = context
         self.payment = payment
         self.pay = pay
@@ -87,13 +103,9 @@ final class PayView: UIView {
         ])
 
         buildSummary(sheet)
+        buildRaisRow()
         buildChoices()
         buildCardForm()
-        if let appURL = pay.appURL, canOpenApp {
-            let open = SheetButton(theme: theme, kind: .secondary, title: words["wallet.open_app"], symbol: "arrow.up.forward.app")
-            open.onTap { [weak self] in self?.onOpenApp?(appURL) }
-            column.addArrangedSubview(open)
-        }
         buildAgreements()
         select(initialChoice(), animated: false)
     }
@@ -221,12 +233,32 @@ final class PayView: UIView {
 
     // MARK: The ways to pay
 
+    /// "Pay with Raïs", first, for a payer nobody identified: the Raïs app confirms it with the payer's balance or a saved card.
+    private func buildRaisRow() {
+        guard pay.payer == nil, let appURL = pay.appURL else { return }
+        let brand = words["wallet.cta"]
+        // A server that does not word this yet (it is older than the SDK) leaves the card form as it always was
+        guard !brand.isEmpty, !words["sheet.app_note"].isEmpty else { return }
+        let row = RaisPayRow(theme: theme, title: brand, note: words["sheet.app_note"])
+        row.addAction(UIAction { [weak self] _ in
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            self?.appRow?.isOpening = true
+            self?.onOpenApp?(appURL)
+        }, for: .touchUpInside)
+        appRow = row
+        column.addArrangedSubview(row)
+        column.setCustomSpacing(20, after: row)
+    }
+
+    /// The app did not open (it is not installed), or the payer is back: the row is ready for another tap.
+    func appOpenEnded() { appRow?.isOpening = false }
+
     private func buildChoices() {
         var choices: [Choice] = []
         if pay.balance != nil { choices.append(.balance) }
         choices += pay.cards.map(Choice.card)
         guard !choices.isEmpty else {
-            column.addArrangedSubview(heading(words["pay.title"]))
+            column.addArrangedSubview(heading(words[appRow == nil ? "pay.title" : "wallet.or_card"]))
             return
         }
         choices.append(.newCard)
@@ -245,7 +277,9 @@ final class PayView: UIView {
             column.addArrangedSubview(row)
             column.setCustomSpacing(4, after: row)
         } else {
-            column.addArrangedSubview(heading(words["saved.title"]))
+            let title = heading(words["saved.title"])
+            choicesHeading = title
+            column.addArrangedSubview(title)
         }
 
         let box = GroupBox(theme: theme)
@@ -267,15 +301,20 @@ final class PayView: UIView {
                                 mark: BrandMarks.single(card.brand, size: 30) ?? Self.cardGlyph(theme))
                 row.accessibilityIdentifier = "rais.choice.card"
             case .newCard:
-                row = ChoiceRow(theme: theme, title: words[pay.payer != nil ? "wallet.other_card" : "saved.other"], detail: nil, mark: Self.cardGlyph(theme, symbol: "plus"))
+                let glyph = Self.cardGlyph(theme, symbol: "plus")
+                row = ChoiceRow(theme: theme, title: newCardTitle, detail: nil, mark: glyph)
                 row.accessibilityIdentifier = "rais.choice.new"
+                newCardRow = row
+                newCardGlyph = glyph
             }
             row.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
                 UISelectionFeedbackGenerator().selectionChanged()
-                self?.select(choice, animated: true)
+                // while the saved ways to pay are folded away this row reads "Use a saved card": it brings them back
+                self.select(choice == .newCard && self.savedFolded ? self.firstSavedChoice() : choice, animated: true)
             }, for: .touchUpInside)
             choiceRows.append((choice, row))
-            box.add(row)
+            separators[choice.key] = box.add(row)
         }
         column.addArrangedSubview(box)
 
@@ -298,7 +337,7 @@ final class PayView: UIView {
         column.addArrangedSubview(savedCVCGroup)
     }
 
-    private static func cardGlyph(_ theme: SheetTheme, symbol: String = "creditcard") -> UIView {
+    private static func cardGlyph(_ theme: SheetTheme, symbol: String = "creditcard") -> UIImageView {
         let icon = UIImageView(image: Glyph.image(symbol, size: 15, weight: .medium))
         icon.tintColor = theme.secondary
         icon.contentMode = .center
@@ -321,6 +360,16 @@ final class PayView: UIView {
         return label
     }
 
+    private var newCardTitle: String { words[pay.payer != nil ? "wallet.other_card" : "saved.other"] }
+
+    /// Saved ways to pay can be folded away only when one of them could be paid with.
+    private var canFold: Bool { !pay.cards.isEmpty || pay.balance?.enough == true }
+
+    private func firstSavedChoice() -> Choice {
+        let first = initialChoice()
+        return first == .newCard ? (pay.cards.first.map(Choice.card) ?? .newCard) : first
+    }
+
     private func initialChoice() -> Choice {
         if let chosen = pay.chosen, let card = pay.cards.first(where: { $0.id == chosen }) { return .card(card) }
         if pay.balance?.enough == true { return .balance }
@@ -328,9 +377,38 @@ final class PayView: UIView {
         return .newCard
     }
 
+    /// Folds the saved ways to pay away (only "another card" stays, selected) or shows them all again.
+    private func setSavedFolded(_ folded: Bool, animated: Bool) {
+        savedFolded = folded
+        let changes = {
+            for (candidate, row) in self.choiceRows {
+                let keep = !folded || candidate == .newCard
+                row.isHidden = !keep
+                row.alpha = keep ? 1 : 0
+                // the first row showing has nothing above it
+                self.separators[candidate.key]?.isHidden = folded
+            }
+            // the "another card" row turns into the way back to the saved ones
+            self.newCardRow?.setTitle(folded ? self.words[self.pay.balance?.enough == true ? "sheet.pick_saved_or_balance" : "sheet.pick_saved"] : self.newCardTitle)
+            self.newCardRow?.isDisclosure = folded
+            self.newCardGlyph?.image = Glyph.image(folded ? "creditcard" : "plus", size: 15, weight: .medium)
+            self.choicesHeading?.text = self.words[folded ? "pay.title" : "saved.title"]
+            self.onResize?()
+        }
+        if animated {
+            UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.92, initialSpringVelocity: 0, options: [.beginFromCurrentState], animations: changes)
+        } else {
+            changes()
+        }
+    }
+
     private func select(_ new: Choice, animated: Bool) {
         choice = new
         for (candidate, row) in choiceRows { row.isSelected = candidate == new }
+        if animated, !choiceRows.isEmpty {
+            if new == .newCard, !savedFolded, canFold { setSavedFolded(true, animated: true) }
+            else if new != .newCard, savedFolded { setSavedFolded(false, animated: true) }
+        }
         var needsCVC = false
         if case .card(let card) = new { needsCVC = card.needsCVC }
         if case .card(let card) = new { savedCVCCell.field.accessibilityLabel = words("wallet.card_cvc", ["last4": card.last4]) }
